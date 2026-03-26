@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login / Register Tabungan Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Poppins',sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;justify-content:center;align-items:center;height:100vh;color:white;}
+.card{background:white;color:black;padding:30px;border-radius:20px;box-shadow:0 15px 40px rgba(0,0,0,0.3);width:90%;max-width:400px;text-align:center;}
+input{width:90%;padding:15px;margin:10px 0;border-radius:12px;border:1px solid #ccc;font-size:16px;}
+button{padding:12px 20px;margin:5px;border:none;border-radius:10px;background:#4CAF50;color:white;cursor:pointer;}
+button:hover{background:#45a049;}
+.switch{font-size:14px;margin-top:10px;cursor:pointer;color:#555;}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2 id="title">Login 🔐</h2>
+<input type="text" id="username" placeholder="Username">
+<input type="password" id="password" placeholder="Password">
+<button onclick="submitForm()">Masuk</button>
+<div class="switch" onclick="toggleMode()">Belum punya akun? Daftar</div>
+</div>
+
+<script>
+let isLogin = true;
+
+// AUTO LOGIN
+if(localStorage.getItem("user")){
+  window.location.href = "dashboard.html";
+}
+
+// HASH
+async function hash(text){
+ const enc = new TextEncoder();
+ const buf = await crypto.subtle.digest("SHA-256", enc.encode(text.trim()));
+ return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+// TOGGLE LOGIN / REGISTER
+function toggleMode(){
+ isLogin = !isLogin;
+ document.getElementById("title").innerText = isLogin ? "Login 🔐" : "Register 📝";
+ document.querySelector("button").innerText = isLogin ? "Masuk" : "Daftar";
+ document.querySelector(".switch").innerText = isLogin 
+   ? "Belum punya akun? Daftar" 
+   : "Sudah punya akun? Login";
+}
+
+// SUBMIT
+async function submitForm(){
+ const username = document.getElementById("username").value.trim();
+ const password = document.getElementById("password").value.trim();
+ if(!username || !password){ alert("Isi semua!"); return; }
+
+ let users = JSON.parse(localStorage.getItem("users")) || [];
+
+ if(isLogin){
+   const passHash = await hash(password);
+   const user = users.find(u => u.username===username && u.password===passHash);
+   if(user){
+     localStorage.setItem("user", username);  // ✅ key sama dengan dashboard
+     window.location.href="dashboard.html";
+   } else {
+     alert("Login gagal! Pastikan username dan password benar.");
+     console.log("DEBUG users:", users);
+     console.log("DEBUG input hash:", passHash);
+   }
+ } else {
+   if(users.find(u=>u.username===username)){
+     alert("Username sudah ada!");
+     return;
+   }
+   const passHash = await hash(password);
+   users.push({username, password: passHash});
+   localStorage.setItem("users", JSON.stringify(users));
+   alert("Register berhasil! Silakan login.");
+   toggleMode();
+ }
+}
+</script>
+</body>
+</html>

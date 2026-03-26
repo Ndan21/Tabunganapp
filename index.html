@@ -1,0 +1,276 @@
+<!DOCTYPE html>  <html lang="id">  
+<head>  
+<meta charset="UTF-8">  
+<meta name="viewport" content="width=device-width, initial-scale=1.0">  
+<title>Dashboard Tabungan Pro</title>  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">  
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <style>  
+body{margin:0;font-family:'Poppins',sans-serif;background:#f0f4f8;padding:20px;}  
+.card{background:white;border-radius:20px;padding:20px;margin-bottom:20px;box-shadow:0 10px 30px rgba(0,0,0,0.15);}  
+h2,h3{margin:0 0 10px 0;}  
+button{padding:10px 20px;border:none;border-radius:12px;margin:5px;cursor:pointer;color:white;font-weight:600;}  
+.btn-blue{background:#2196F3;}   
+.btn-red{background:#f44336;}   
+.btn-green{background:#4CAF50;}  
+input,select{width:100%;padding:10px;margin:5px 0;border-radius:10px;border:1px solid #ccc;font-size:16px;}  
+.progress{background:#eee;border-radius:12px;overflow:hidden;height:12px;margin-top:5px;}  
+.bar{height:12px;background:#4CAF50;width:0%;transition:0.5s;}  
+  
+#popup{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;}  
+.modal-content{background:white;border-radius:20px;padding:20px;width:90%;max-width:700px;max-height:80%;overflow:auto;position:relative;}  
+.close-btn{position:absolute;top:10px;right:10px;}  
+  
+table{width:100%;border-collapse:collapse;margin-top:10px;}  
+th,td{padding:10px;border:1px solid #ddd;text-align:center;}  
+th{background:#2196F3;color:white;}  
+</style>  </head>  <body>  <script>  
+// 🔐 LOGIN FIX (SAMA DENGAN TRANSAKSI)  
+let user = localStorage.getItem("user");  
+if(!user){  
+  window.location.href = "login.html";  
+}  
+</script>  <!-- USER -->  <div class="card">  
+<h2>Halo, <span id="user"></span></h2>  
+<button class="btn-red" onclick="logout()">Logout</button>  <h3>🔑 Ganti Password</h3>  
+<input type="password" id="newPass" placeholder="Password Baru">  
+<button class="btn-green" onclick="changePassword()">Ganti Password</button>  
+</div>  <!-- RINGKASAN -->  <div class="card">  
+<h3>💰 Ringkasan</h3>  
+<p>Total Saldo: <span id="totalSaldo">Rp 0</span></p>  
+<p>Total Target: <span id="totalTarget">Rp 0</span></p>  <input type="number" id="inputTotalTarget" placeholder="Set Target Total">  
+<button class="btn-blue" onclick="setTotalTarget()">Simpan</button>  
+<button class="btn-red" onclick="resetTargetManual()">Reset</button>  <div class="progress"><div id="progressTotal" class="bar"></div></div>  
+<p id="persenTotal">0%</p>  
+</div>  <!-- CHART -->  <div class="card">  
+<h3>📈 Timeline Saldo</h3>  
+<canvas id="chart"></canvas>  
+</div>  <!-- TARGET PER AKUN -->  <div class="card">  
+<h3>🎯 Target per Akun</h3>  <select id="targetAkun">  
+<option>BRI</option><option>Cash</option><option>DANA</option><option>SeaBank</option><option>Jago</option>  
+</select>  <input type="number" id="targetJumlah" placeholder="Jumlah Target">  
+<button class="btn-blue" onclick="setTarget()">Simpan</button>  
+<button class="btn-red" onclick="resetSemuaTarget()">Reset Semua</button>  <div id="listTarget"></div>  
+</div>  <!-- NAV -->  <div class="card">  
+<h3>📊 Laporan</h3>  
+<button class="btn-blue" onclick="openPopup()">Lihat Laporan</button>  
+<button class="btn-green" onclick="goTransaksi()">➡ Transaksi</button>  
+</div>  <!-- POPUP -->  <div id="popup">  
+<div class="modal-content">  
+<h3>Laporan Transaksi</h3>  
+<table>  
+<thead>  
+<tr><th>Tanggal</th><th>Akun</th><th>Jumlah</th><th>Target</th><th>%</th></tr>  
+</thead>  
+<tbody id="tbody"></tbody>  
+</table>  
+<button class="btn-red close-btn" onclick="closePopup()">X</button>  
+</div>  
+</div>  <script>  
+  
+// USER  
+document.getElementById("user").innerText = user;  
+  
+// FORMAT  
+function rupiah(x){  
+ return "Rp " + (x||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,".");  
+}  
+  
+// DATA  
+let riwayat = JSON.parse(localStorage.getItem(user+"_riwayat"))||[];  
+let target = JSON.parse(localStorage.getItem(user+"_target"))||{};  
+let totalTargetManual = +localStorage.getItem(user+"_totalTargetManual")||0;  
+  
+// 🔥 HITUNG ULANG SALDO (PENTING)  
+let akun = {};  
+function hitungSaldoAkun(){  
+ akun = {};  
+ riwayat.forEach(r=>{  
+   if(!akun[r.akun]) akun[r.akun]=0;  
+   akun[r.akun] += (r.tipe==='masuk'? +r.jumlah : -r.jumlah);  
+ });  
+ localStorage.setItem(user+"_akun", JSON.stringify(akun));  
+}  
+  
+// SAVE  
+function save(){  
+ localStorage.setItem(user+"_akun",JSON.stringify(akun));  
+ localStorage.setItem(user+"_riwayat",JSON.stringify(riwayat));  
+ localStorage.setItem(user+"_target",JSON.stringify(target));  
+ localStorage.setItem(user+"_totalTargetManual",totalTargetManual);  
+}  
+  
+// LOGOUT  
+function logout(){  
+ localStorage.removeItem("user");  
+ window.location.href="login.html";  
+}  
+  
+// HASH PASSWORD  
+async function hash(text){  
+ const enc=new TextEncoder().encode(text);  
+ const buf=await crypto.subtle.digest("SHA-256",enc);  
+ return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");  
+}  
+  
+// GANTI PASSWORD  
+async function changePassword(){  
+ let p=document.getElementById("newPass").value;  
+ if(!p) return alert("Isi password!");  
+ let users=JSON.parse(localStorage.getItem("users"))||[];  
+ let i=users.findIndex(u=>u.username===user);  
+ if(i===-1) return;  
+ users[i].password=await hash(p);  
+ localStorage.setItem("users",JSON.stringify(users));  
+ alert("Password berhasil diganti!");  
+ document.getElementById("newPass").value="";  
+}  
+  
+// HITUNG TOTAL  
+function hitung(){  
+ hitungSaldoAkun();  
+  
+ let saldo=0;  
+ Object.values(akun).forEach(v=> saldo+=v);  
+  
+ let p = totalTargetManual ? Math.min(saldo/totalTargetManual*100,100) : 0;  
+  
+ document.getElementById("totalSaldo").innerText=rupiah(saldo);  
+ document.getElementById("totalTarget").innerText=rupiah(totalTargetManual);  
+ document.getElementById("persenTotal").innerText=p.toFixed(0)+"%";  
+ document.getElementById("progressTotal").style.width=p+"%";  
+}  
+  
+// TARGET AKUN  
+function setTarget(){  
+ let a=document.getElementById("targetAkun").value;  
+ let j=+document.getElementById("targetJumlah").value;  
+ if(j<=0) return alert("Isi!");  
+ target[a]=j;  
+ save();  
+ renderTargetAkun();  
+ document.getElementById("targetJumlah").value="";  
+}  
+  
+function resetTargetAkun(nama){  
+ delete target[nama];  
+ save();  
+ renderTargetAkun();  
+}  
+  
+function resetSemuaTarget(){  
+ if(confirm("Yakin reset semua target akun?")){  
+  target = {};  
+  save();  
+  renderTargetAkun();  
+ }  
+}  
+  
+// RENDER TARGET  
+function renderTargetAkun(){  
+ let div=document.getElementById("listTarget");  
+ div.innerHTML="";  
+  
+ for(let a in target){  
+  let saldoAkun = akun[a] || 0;  
+  let persen = target[a] ? Math.min(saldoAkun/target[a]*100,100) : 0;  
+  
+  div.innerHTML+=`  
+  <div style="margin-top:10px;">  
+    <b>${a}</b> - ${rupiah(saldoAkun)} / ${rupiah(target[a])}  
+    <button class="btn-red" style="padding:5px 10px;font-size:12px;" onclick="resetTargetAkun('${a}')">Reset</button>  
+      
+    <div class="progress">  
+      <div class="bar" style="width:${persen}%"></div>  
+    </div>  
+    <small>${persen.toFixed(0)}%</small>  
+  </div>`;  
+ }  
+}  
+  
+// TOTAL TARGET  
+function setTotalTarget(){  
+ let v=+document.getElementById("inputTotalTarget").value;  
+ if(v<=0) return alert("Isi!");  
+ totalTargetManual=v;  
+ save();  
+ hitung();  
+ document.getElementById("inputTotalTarget").value="";  
+}  
+  
+function resetTargetManual(){  
+ totalTargetManual=0;  
+ save();  
+ hitung();  
+}  
+  
+// CHART SALDO AKUMULASI  
+let chart;  
+function renderChart(){  
+  
+ let labels=[];  
+ let data=[];  
+ let saldo=0;  
+  
+ riwayat.forEach(r=>{  
+   saldo += (r.tipe==='masuk'?+r.jumlah:-r.jumlah);  
+   labels.push(r.tanggal);  
+   data.push(saldo);  
+ });  
+  
+ if(chart) chart.destroy();  
+  
+ chart=new Chart(document.getElementById("chart"),{  
+  type:"line",  
+  data:{  
+    labels,  
+    datasets:[{  
+      label:"Saldo",  
+      data,  
+      fill:true  
+    }]  
+  }  
+ });  
+}  
+  
+// POPUP  
+function openPopup(){  
+ let tb=document.getElementById("tbody");  
+ tb.innerHTML="";  
+  
+ riwayat.forEach(r=>{  
+  let t=target[r.akun]||0;  
+  let p=t?Math.min((akun[r.akun]||0)/t*100,100):0;  
+  
+  tb.innerHTML+=`  
+  <tr>  
+  <td>${r.tanggal}</td>  
+  <td>${r.akun}</td>  
+  <td>${rupiah(r.jumlah)}</td>  
+  <td>${rupiah(t)}</td>  
+  <td>${p.toFixed(0)}%</td>  
+  </tr>`;  
+ });  
+  
+ document.getElementById("popup").style.display="flex";  
+}  
+  
+function closePopup(){  
+ document.getElementById("popup").style.display="none";  
+}  
+  
+// NAV  
+function goTransaksi(){  
+ window.location.href="transaksi.html";  
+}  
+  
+// 🔥 AUTO REFRESH SAAT BALIK  
+window.addEventListener("focus", () => {  
+ location.reload();  
+});  
+  
+// INIT  
+hitung();  
+renderChart();  
+renderTargetAkun();  
+  
+</script>  </body>  
+</html>  Itu dasboard saya

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Transaksi Tabungan</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{
+    font-family:'Poppins',sans-serif;
+    background:#764ba2;
+    padding:20px;
+    color:white;
+    margin:0;
+}
+
+.card{
+    background:white;
+    color:black;
+    padding:20px;
+    border-radius:20px;
+    margin-bottom:20px;
+    box-shadow:0 8px 25px rgba(0,0,0,0.2);
+}
+
+button{
+    padding:10px 20px;
+    border:none;
+    border-radius:12px;
+    margin:3px;
+    cursor:pointer;
+    transition:0.3s;
+    font-weight:600;
+}
+
+.green{background:#4CAF50;color:white;}
+.red{background:#f44336;color:white;}
+.blue{background:#2196F3;color:white;}
+
+input,select{
+    width:100%;
+    padding:12px;
+    margin:5px 0;
+    border-radius:12px;
+    border:1px solid #ccc;
+    font-size:16px;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:10px;
+    min-width:700px;
+}
+
+th,td{
+    padding:12px;
+    border:1px solid #ddd;
+    text-align:center;
+}
+
+th{
+    background:#667eea;
+    color:white;
+    position: sticky;
+    top:0;
+}
+
+tr:nth-child(even){
+    background:#f9f9f9;
+}
+
+tr:hover{
+    background:#e3e3e3;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  height:8px;
+}
+.table-wrapper::-webkit-scrollbar-thumb {
+  background:#667eea;
+  border-radius:4px;
+}
+.table-wrapper::-webkit-scrollbar-track {
+  background:#f1f1f1;
+  border-radius:4px;
+}
+</style>
+</head>
+<body>
+
+<script>
+let user = localStorage.getItem("user");
+if(!user) window.location.href="login.html";
+</script>
+
+<h2>Transaksi</h2>
+
+<div class="card">
+<input type="number" id="jumlah" placeholder="Jumlah">
+<select id="akunSelect">
+<option>BRI</option><option>Cash</option><option>DANA</option><option>SeaBank</option><option>Jago</option>
+</select>
+<select id="kategori">
+<option>Nabung</option><option>Makan</option><option>Lainnya</option>
+</select>
+<button class="green" onclick="tambah()">Setor</button>
+<button class="red" onclick="tarik()">Tarik</button>
+</div>
+
+<div class="card">
+<h3>Riwayat Singkat</h3>
+<ul id="riwayat"></ul>
+<button class="blue" onclick="exportExcel()">Export</button>
+<button class="red" onclick="resetRiwayat()">Reset</button>
+<button class="green" onclick="undoReset()">Undo</button>
+</div>
+
+<div class="card">
+<h3>📊 Laporan Seluruh Transaksi</h3>
+<div class="table-wrapper">
+  <table id="laporanTransaksi">
+    <thead>
+      <tr>
+        <th>No</th>
+        <th>Tanggal</th>
+        <th>Akun</th>
+        <th>Jenis</th>
+        <th>Kategori</th>
+        <th>Jumlah</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+</div>
+
+<div class="card">
+<button class="blue" onclick="back()">⬅ Kembali Dashboard</button>
+</div>
+
+<script>
+// Fungsi format Rupiah
+function formatRupiah(angka){
+  return "Rp " + angka.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+let riwayat=JSON.parse(localStorage.getItem(user+"_riwayat"))||[];
+let akunData=JSON.parse(localStorage.getItem(user+"_akun"))||{};
+let target=JSON.parse(localStorage.getItem(user+"_target"))||{};
+let totalTargetManual=+localStorage.getItem(user+"_totalTargetManual")||0;
+
+function simpan(){
+ localStorage.setItem(user+"_riwayat",JSON.stringify(riwayat));
+ localStorage.setItem(user+"_akun",JSON.stringify(akunData));
+ localStorage.setItem(user+"_target",JSON.stringify(target));
+ localStorage.setItem(user+"_totalTargetManual",totalTargetManual);
+}
+
+function hitungUlangSaldo(){
+ akunData={};
+ riwayat.forEach(r=>{
+   if(!akunData[r.akun]) akunData[r.akun]=0;
+   akunData[r.akun]+=r.tipe==='masuk'? r.jumlah : -r.jumlah;
+ });
+}
+
+function tampilRiwayat(){
+ let ul=document.getElementById("riwayat"); ul.innerHTML="";
+ riwayat.forEach((r,i)=>{
+   ul.innerHTML+=`<li>${r.tanggal} ${r.akun} ${r.tipe} (${r.kategori}) ${formatRupiah(r.jumlah)}</li>`;
+ });
+}
+
+function tampilLaporan(){
+ let tb=document.querySelector("#laporanTransaksi tbody");
+ tb.innerHTML="";
+ riwayat.forEach((r,i)=>{
+   tb.innerHTML+=`<tr>
+   <td>${i+1}</td>
+   <td>${r.tanggal}</td>
+   <td>${r.akun}</td>
+   <td>${r.tipe}</td>
+   <td>${r.kategori}</td>
+   <td>${formatRupiah(r.jumlah)}</td>
+   <td>
+   <button class="green" onclick="edit(${i})">Edit</button>
+   <button class="red" onclick="hapus(${i})">Hapus</button>
+   </td>
+   </tr>`;
+ });
+}
+
+function tambah(){
+ let j=+document.getElementById("jumlah").value;
+ let a=document.getElementById("akunSelect").value;
+ let k=document.getElementById("kategori").value;
+ if(j<=0)return alert("Isi jumlah!");
+ riwayat.push({tanggal:new Date().toLocaleString(),jumlah:j,tipe:'masuk',akun:a,kategori:k});
+ document.getElementById("jumlah").value = ""; // reset input
+ hitungUlangSaldo(); simpan(); tampilRiwayat(); tampilLaporan();
+}
+
+function tarik(){
+ let j=+document.getElementById("jumlah").value;
+ let a=document.getElementById("akunSelect").value;
+ let k=document.getElementById("kategori").value;
+ if(j<=0)return alert("Isi jumlah!");
+ riwayat.push({tanggal:new Date().toLocaleString(),jumlah:j,tipe:'keluar',akun:a,kategori:k});
+ document.getElementById("jumlah").value = ""; // reset input
+ hitungUlangSaldo(); simpan(); tampilRiwayat(); tampilLaporan();
+}
+
+function edit(i){
+ let r=riwayat[i];
+ let j=prompt("Jumlah:",r.jumlah); if(j===null)return;
+ let k=prompt("Kategori:",r.kategori); if(k===null)return;
+ r.jumlah=+j; r.kategori=k;
+ hitungUlangSaldo(); simpan(); tampilRiwayat(); tampilLaporan();
+}
+
+function hapus(i){
+ if(confirm("Hapus transaksi?")){
+   riwayat.splice(i,1);
+   hitungUlangSaldo(); simpan(); tampilRiwayat(); tampilLaporan();
+ }
+}
+
+function resetRiwayat(){
+ if(confirm("Reset SEMUA data? (Saldo, Target, Riwayat)")){
+   localStorage.setItem(user+"_backup",JSON.stringify({riwayat,akunData,target,totalTargetManual}));
+   riwayat=[]; akunData={}; target={}; totalTargetManual=0;
+   simpan(); tampilRiwayat(); tampilLaporan();
+ }
+}
+
+function undoReset(){
+ let b=localStorage.getItem(user+"_backup");
+ if(!b)return alert("Tidak ada backup");
+ let d=JSON.parse(b);
+ riwayat=d.riwayat||[];
+ akunData=d.akunData||{};
+ target=d.target||{};
+ totalTargetManual=d.totalTargetManual||0;
+ simpan(); tampilRiwayat(); tampilLaporan();
+}
+
+function exportExcel(){
+ let ws=XLSX.utils.json_to_sheet(riwayat);
+ let wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,ws,"Data");
+ XLSX.writeFile(wb,"laporan.xlsx");
+}
+
+function back(){ window.location.href="dashboard.html"; }
+
+tampilRiwayat();
+tampilLaporan();
+</script>
+
+</body>
+</html>
